@@ -1,0 +1,29 @@
+{
+  "platforms": [
+    {
+      "name": "Instagram",
+      "enabled": true,
+      "priority": 1
+    },
+    {
+      "name": "TikTok",
+      "enabled": true,
+      "priority": 1
+    },
+    {
+      "name": "Pinterest",
+      "enabled": true,
+      "priority": 2
+    },
+    {
+      "name": "YouTube Shorts",
+      "enabled": true,
+      "priority": 2
+    },
+    {
+      "name": "Facebook",
+      "enabled": false,
+      "priority": 3
+    }
+  ]
+}
