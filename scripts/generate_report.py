@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from datetime import datetime
+from html import escape
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_FILE = ROOT / "data" / "findings.json"
@@ -24,18 +25,49 @@ findings = sorted(
 rows = ""
 
 for item in findings:
+    content_url = item.get("content_url", "#") or "#"
+
     rows += f"""
     <tr>
-      <td>{item.get("traffic_score", "")}</td>
-      <td>{item.get("platform", "")}</td>
-      <td>{item.get("source_keyword", "")}</td>
-      <td>{item.get("title", "")}</td>
-      <td>{item.get("views", "")}</td>
-      <td>{item.get("likes", "")}</td>
-      <td>{item.get("hook", "")}</td>
-      <td>{item.get("copy_model", "")}</td>
-      <td><a href="{item.get("content_url", "#")}" target="_blank">Apri</a></td>
+      <td>{escape(str(item.get("traffic_score", "")))}</td>
+      <td>{escape(str(item.get("platform", "")))}</td>
+      <td>{escape(str(item.get("source_keyword", "")))}</td>
+      <td>{escape(str(item.get("title", "")))}</td>
+      <td>{escape(str(item.get("views", "")))}</td>
+      <td>{escape(str(item.get("likes", "")))}</td>
+      <td>{escape(str(item.get("hook", "")))}</td>
+      <td>{escape(str(item.get("copy_model", "")))}</td>
+      <td><a href="{escape(content_url)}" target="_blank">Apri</a></td>
     </tr>
+    """
+
+if not findings:
+    main_content = """
+    <div class="empty">
+      Nessun contenuto ancora presente in <strong>data/findings.json</strong>.<br>
+      Il radar è pronto: nel prossimo step aggiungeremo il collector.
+    </div>
+    """
+else:
+    main_content = f"""
+    <table>
+      <thead>
+        <tr>
+          <th>Score</th>
+          <th>Piattaforma</th>
+          <th>Keyword</th>
+          <th>Contenuto</th>
+          <th>Views</th>
+          <th>Likes</th>
+          <th>Hook</th>
+          <th>Modello da copiare</th>
+          <th>Link</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows}
+      </tbody>
+    </table>
     """
 
 html = f"""
@@ -101,31 +133,7 @@ html = f"""
     Report aggiornato: {datetime.now().strftime("%Y-%m-%d %H:%M")}
   </div>
 
-  {"""
-  <div class="empty">
-    Nessun contenuto ancora presente in <strong>data/findings.json</strong>.<br>
-    Il radar è pronto: nel prossimo step aggiungeremo il collector.
-  </div>
-  """ if not findings else f"""
-  <table>
-    <thead>
-      <tr>
-        <th>Score</th>
-        <th>Piattaforma</th>
-        <th>Keyword</th>
-        <th>Contenuto</th>
-        <th>Views</th>
-        <th>Likes</th>
-        <th>Hook</th>
-        <th>Modello da copiare</th>
-        <th>Link</th>
-      </tr>
-    </thead>
-    <tbody>
-      {rows}
-    </tbody>
-  </table>
-  """}
+  {main_content}
 </body>
 </html>
 """
