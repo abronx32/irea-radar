@@ -2,6 +2,7 @@ name: Generate Irea Radar Report
 
 on:
   workflow_dispatch:
+
   schedule:
     - cron: "0 6 * * *"
 
@@ -21,10 +22,19 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Generate report
-        run: python scripts/generate_report.py
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
 
-      - name: Commit report
+      - name: Run collector
+        run: |
+          python scripts/collector.py
+
+      - name: Generate report
+        run: |
+          python scripts/generate_report.py
+
+      - name: Commit updated files
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Update Irea Radar report"
+          commit_message: "Update Irea Radar data and report"
