@@ -26,18 +26,55 @@ def load_keywords():
 def clean_text(text):
     if not text:
         return ""
-
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
+    return re.sub(r"\s+", " ", text).strip()
 
 
-def extract_account_from_url(url):
-    match = re.search(r"instagram\.com/([^/]+)/", url)
-    if match:
-        username = match.group(1)
-        if username not in ["reel", "p", "explore", "accounts"]:
-            return username
-    return ""
+def parse_number(raw):
+    if not raw:
+        return None
+
+    raw = raw.strip().replace(",", "").replace(".", "")
+
+    multiplier = 1
+    if raw.lower().endswith("k"):
+        multiplier = 1000
+        raw = raw[:-1]
+    elif raw.lower().endswith("m"):
+        multiplier = 1000000
+        raw = raw[:-1]
+
+    try:
+        return int(float(raw) * multiplier)
+    except Exception:
+        return None
+
+
+def extract_metrics(text):
+    likes = None
+    comments = None
+
+    like_match = re.search(r"([\d,.]+[KkMm]?)\s+likes", text)
+    comment_match = re.search(r"([\d,.]+[KkMm]?)\s+comments", text)
+
+    if like_match:
+        likes = parse_number(like_match.group(1))
+
+    if comment_match:
+        comments = parse_number(comment_match.group(1))
+
+    return likes, comments
+
+
+def make_score(likes, comments, content_type):
+    score = 10 if content_type == "reel" else 5
+
+    if likes:
+        score += min(int(likes / 100), 500)
+
+    if comments:
+        score += min(int(comments * 2), 300)
+
+    return score
 
 
 def instagram_login(page):
@@ -111,6 +148,8 @@ def extract_reel_metadata(page, url):
         "account": "",
         "caption": "",
         "title": "",
+        "likes": None,
+        "comments": None
     }
 
     try:
@@ -121,7 +160,7 @@ def extract_reel_metadata(page, url):
         try:
             page_title = page.title()
         except Exception:
-            page_title = ""
+            pass
 
         meta_description = ""
         try:
@@ -149,22 +188,23 @@ def extract_reel_metadata(page, url):
         ]))
 
         account = ""
+        account_match = re.search(r"comments\s+-\s+([A-Za-z0-9._]+)\s+on", combined)
 
-        account_match = re.search(r"@([A-Za-z0-9._]+)", combined)
         if account_match:
             account = account_match.group(1)
 
         if not account:
-            account = extract_account_from_url(url)
+            account_match = re.search(r"@\s*([A-Za-z0-9._]+)", combined)
+            if account_match:
+                account = account_match.group(1)
 
-        caption = combined[:500]
-
-        if not caption:
-            caption = page_title or og_title or meta_description or ""
+        likes, comments = extract_metrics(combined)
 
         metadata["account"] = account
-        metadata["caption"] = clean_text(caption)
+        metadata["caption"] = combined[:700]
         metadata["title"] = clean_text(page_title or og_title or "Instagram reel")
+        metadata["likes"] = likes
+        metadata["comments"] = comments
 
         return metadata
 
@@ -177,26 +217,23 @@ def make_item(keyword, url, metadata):
     today = datetime.now().strftime("%Y-%m-%d")
 
     content_type = "reel" if "/reel/" in url else "post"
-    caption = metadata.get("caption", "")
-    account = metadata.get("account", "")
-    title = metadata.get("title", "")
-
-    if not title:
-        title = f"Instagram {content_type}: {keyword}"
+    likes = metadata.get("likes")
+    comments = metadata.get("comments")
+    score = make_score(likes, comments, content_type)
 
     return {
         "date_found": today,
         "platform": "Instagram",
         "source_keyword": keyword,
         "content_url": url,
-        "account": account,
-        "title": title,
+        "account": metadata.get("account", ""),
+        "title": metadata.get("title", f"Instagram {content_type}: {keyword}"),
         "views": None,
-        "likes": None,
-        "comments": None,
-        "traffic_score": 10 if content_type == "reel" else 5,
+        "likes": likes,
+        "comments": comments,
+        "traffic_score": score,
         "content_type": content_type,
-        "observed_theme": caption,
+        "observed_theme": metadata.get("caption", ""),
         "hook": "",
         "visual_pattern": "",
         "audio_or_text_pattern": "",
@@ -241,6 +278,8 @@ def main():
                     findings.append(make_item(keyword, url, metadata))
 
         browser.close()
+
+    findings = sorted(findings, key=lambda x: x.get("traffic_score", 0), reverse=True)
 
     with open(FINDINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(findings, f, indent=2, ensure_ascii=False)
