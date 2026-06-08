@@ -23,32 +23,21 @@ def load_keywords():
         return [line.strip() for line in f if line.strip()]
 
 
-def make_item(keyword, url):
-    today = datetime.now().strftime("%Y-%m-%d")
+def clean_text(text):
+    if not text:
+        return ""
 
-    content_type = "reel" if "/reel/" in url else "post"
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
 
-    return {
-        "date_found": today,
-        "platform": "Instagram",
-        "source_keyword": keyword,
-        "content_url": url,
-        "account": "",
-        "title": f"Instagram {content_type}: {keyword}",
-        "views": None,
-        "likes": None,
-        "comments": None,
-        "traffic_score": 10 if content_type == "reel" else 5,
-        "content_type": content_type,
-        "observed_theme": "",
-        "hook": "",
-        "visual_pattern": "",
-        "audio_or_text_pattern": "",
-        "why_it_gets_attention": "",
-        "copy_model": "",
-        "adaptation_potential_for_irea": "",
-        "screenshot_url": ""
-    }
+
+def extract_account_from_url(url):
+    match = re.search(r"instagram\.com/([^/]+)/", url)
+    if match:
+        username = match.group(1)
+        if username not in ["reel", "p", "explore", "accounts"]:
+            return username
+    return ""
 
 
 def instagram_login(page):
@@ -117,6 +106,107 @@ def collect_instagram_links(page, keyword):
         return []
 
 
+def extract_reel_metadata(page, url):
+    metadata = {
+        "account": "",
+        "caption": "",
+        "title": "",
+    }
+
+    try:
+        page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        page.wait_for_timeout(6000)
+
+        page_title = ""
+        try:
+            page_title = page.title()
+        except Exception:
+            page_title = ""
+
+        meta_description = ""
+        try:
+            meta_description = page.locator("meta[property='og:description']").get_attribute("content", timeout=5000)
+        except Exception:
+            pass
+
+        og_title = ""
+        try:
+            og_title = page.locator("meta[property='og:title']").get_attribute("content", timeout=5000)
+        except Exception:
+            pass
+
+        text_content = ""
+        try:
+            text_content = page.locator("article").inner_text(timeout=8000)
+        except Exception:
+            pass
+
+        combined = clean_text(" ".join([
+            page_title or "",
+            og_title or "",
+            meta_description or "",
+            text_content or ""
+        ]))
+
+        account = ""
+
+        account_match = re.search(r"@([A-Za-z0-9._]+)", combined)
+        if account_match:
+            account = account_match.group(1)
+
+        if not account:
+            account = extract_account_from_url(url)
+
+        caption = combined[:500]
+
+        if not caption:
+            caption = page_title or og_title or meta_description or ""
+
+        metadata["account"] = account
+        metadata["caption"] = clean_text(caption)
+        metadata["title"] = clean_text(page_title or og_title or "Instagram reel")
+
+        return metadata
+
+    except Exception as e:
+        print(f"Errore metadata su {url}: {e}")
+        return metadata
+
+
+def make_item(keyword, url, metadata):
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    content_type = "reel" if "/reel/" in url else "post"
+    caption = metadata.get("caption", "")
+    account = metadata.get("account", "")
+    title = metadata.get("title", "")
+
+    if not title:
+        title = f"Instagram {content_type}: {keyword}"
+
+    return {
+        "date_found": today,
+        "platform": "Instagram",
+        "source_keyword": keyword,
+        "content_url": url,
+        "account": account,
+        "title": title,
+        "views": None,
+        "likes": None,
+        "comments": None,
+        "traffic_score": 10 if content_type == "reel" else 5,
+        "content_type": content_type,
+        "observed_theme": caption,
+        "hook": "",
+        "visual_pattern": "",
+        "audio_or_text_pattern": "",
+        "why_it_gets_attention": "",
+        "copy_model": "",
+        "adaptation_potential_for_irea": "",
+        "screenshot_url": ""
+    }
+
+
 def main():
     keywords = load_keywords()
     findings = []
@@ -147,7 +237,8 @@ def main():
             for url in links:
                 if url not in seen_urls:
                     seen_urls.add(url)
-                    findings.append(make_item(keyword, url))
+                    metadata = extract_reel_metadata(page, url)
+                    findings.append(make_item(keyword, url, metadata))
 
         browser.close()
 
