@@ -22,53 +22,53 @@ findings = sorted(
     reverse=True
 )
 
-rows = ""
+cards = ""
 
 for item in findings:
-    content_url = item.get("content_url", "#") or "#"
+    url = item.get("content_url", "#") or "#"
+    score = item.get("traffic_score", "")
+    platform = item.get("platform", "")
+    keyword = item.get("source_keyword", "")
+    account = item.get("account", "")
+    likes = item.get("likes", "")
+    comments = item.get("comments", "")
+    content_type = item.get("content_type", "")
+    caption = item.get("observed_theme", "")
 
-    rows += f"""
-    <tr>
-      <td>{escape(str(item.get("traffic_score", "")))}</td>
-      <td>{escape(str(item.get("platform", "")))}</td>
-      <td>{escape(str(item.get("source_keyword", "")))}</td>
-      <td>{escape(str(item.get("title", "")))}</td>
-      <td>{escape(str(item.get("views", "")))}</td>
-      <td>{escape(str(item.get("likes", "")))}</td>
-      <td>{escape(str(item.get("hook", "")))}</td>
-      <td>{escape(str(item.get("copy_model", "")))}</td>
-      <td><a href="{escape(content_url)}" target="_blank">Apri</a></td>
-    </tr>
+    if caption and len(caption) > 420:
+        caption = caption[:420] + "..."
+
+    cards += f"""
+    <div class="card">
+      <div class="topline">
+        <span class="score">Score {escape(str(score))}</span>
+        <span>{escape(str(platform))}</span>
+        <span>{escape(str(content_type))}</span>
+        <span>{escape(str(keyword))}</span>
+      </div>
+
+      <div class="metrics">
+        <strong>Account:</strong> {escape(str(account or "—"))}
+        &nbsp; | &nbsp;
+        <strong>Likes:</strong> {escape(str(likes or "—"))}
+        &nbsp; | &nbsp;
+        <strong>Commenti:</strong> {escape(str(comments or "—"))}
+      </div>
+
+      <p class="caption">{escape(str(caption or ""))}</p>
+
+      <a class="button" href="{escape(str(url))}" target="_blank">Apri contenuto</a>
+    </div>
     """
 
 if not findings:
     main_content = """
     <div class="empty">
-      Nessun contenuto ancora presente in <strong>data/findings.json</strong>.<br>
-      Il radar è pronto: nel prossimo step aggiungeremo il collector.
+      Nessun contenuto presente in <strong>data/findings.json</strong>.
     </div>
     """
 else:
-    main_content = f"""
-    <table>
-      <thead>
-        <tr>
-          <th>Score</th>
-          <th>Piattaforma</th>
-          <th>Keyword</th>
-          <th>Contenuto</th>
-          <th>Views</th>
-          <th>Likes</th>
-          <th>Hook</th>
-          <th>Modello da copiare</th>
-          <th>Link</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows}
-      </tbody>
-    </table>
-    """
+    main_content = cards
 
 html = f"""
 <!doctype html>
@@ -76,47 +76,76 @@ html = f"""
 <head>
   <meta charset="utf-8">
   <title>Irea Radar</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body {{
       font-family: Arial, sans-serif;
       background: #f6f3ee;
       color: #1f1b16;
-      padding: 32px;
+      padding: 28px;
+      margin: 0;
     }}
 
     h1 {{
-      margin-bottom: 4px;
+      margin: 0 0 6px 0;
       font-size: 34px;
     }}
 
     .subtitle {{
       color: #6f655b;
-      margin-bottom: 28px;
+      margin-bottom: 24px;
     }}
 
-    table {{
-      width: 100%;
-      border-collapse: collapse;
+    .card {{
       background: #ffffff;
+      border: 1px solid #ded6ca;
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+    }}
+
+    .topline {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }}
+
+    .topline span {{
+      background: #eee6da;
+      padding: 6px 9px;
+      border-radius: 999px;
+      font-size: 13px;
+    }}
+
+    .topline .score {{
+      background: #1f1b16;
+      color: #ffffff;
+      font-weight: bold;
+    }}
+
+    .metrics {{
+      color: #4f463d;
+      margin-bottom: 10px;
       font-size: 14px;
     }}
 
-    th, td {{
-      padding: 12px;
-      border-bottom: 1px solid #ddd;
-      vertical-align: top;
-      text-align: left;
+    .caption {{
+      line-height: 1.45;
+      color: #2b2621;
+      margin-bottom: 14px;
     }}
 
-    th {{
-      background: #e7dfd2;
-      font-weight: bold;
-    }}
-
-    a {{
-      color: #5f4632;
-      font-weight: bold;
+    .button {{
+      display: inline-block;
+      background: #5f4632;
+      color: #ffffff;
       text-decoration: none;
+      padding: 9px 13px;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 14px;
     }}
 
     .empty {{
@@ -130,7 +159,7 @@ html = f"""
 <body>
   <h1>Irea Radar</h1>
   <div class="subtitle">
-    Report aggiornato: {datetime.now().strftime("%Y-%m-%d %H:%M")}
+    Report aggiornato: {datetime.now().strftime("%Y-%m-%d %H:%M")} · Contenuti trovati: {len(findings)}
   </div>
 
   {main_content}
