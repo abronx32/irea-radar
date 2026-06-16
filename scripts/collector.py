@@ -7,15 +7,20 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
 ROOT = Path(__file__).resolve().parents[1]
-ACCOUNTS_FILE = ROOT / "data" / "accounts.txt"
+KEYWORDS_FILE = ROOT / "data" / "keywords.txt"
 FINDINGS_FILE = ROOT / "data" / "findings.json"
 
-MAX_LINKS_PER_ACCOUNT = 6
+MAX_LINKS_PER_KEYWORD = 8
 
 
-def load_accounts():
-    with open(ACCOUNTS_FILE, "r", encoding="utf-8") as f:
-        return [line.strip().replace("@", "") for line in f if line.strip()]
+def keyword_to_hashtag(keyword: str) -> str:
+    cleaned = re.sub(r"[^a-zA-Z0-9 ]", "", keyword.lower())
+    return cleaned.replace(" ", "")
+
+
+def load_keywords():
+    with open(KEYWORDS_FILE, "r", encoding="utf-8") as f:
+        return [line.strip() for line in f if line.strip()]
 
 
 def clean_text(text):
@@ -77,7 +82,7 @@ def instagram_login(page):
     password = os.getenv("INSTAGRAM_PASSWORD")
 
     if not username or not password:
-        print("Instagram secrets non presenti.")
+        print("Instagram secrets non presenti. Provo senza login.")
         return False
 
     print("Provo login Instagram...")
@@ -89,7 +94,7 @@ def instagram_login(page):
         page.fill("input[name='username']", username, timeout=15000)
         page.fill("input[name='password']", password, timeout=15000)
         page.click("button[type='submit']", timeout=15000)
-        page.wait_for_timeout(15000)
+        page.wait_for_timeout(12000)
 
         current_url = page.url
 
@@ -108,22 +113,15 @@ def instagram_login(page):
         return False
 
 
-def collect_account_links(page, account):
-    profile_url = f"https://www.instagram.com/{account}/"
+def collect_instagram_links(page, keyword):
+    hashtag = keyword_to_hashtag(keyword)
+    hashtag_url = f"https://www.instagram.com/explore/tags/{hashtag}/"
 
-    print(f"Analizzo account: @{account}")
+    print(f"Cerco hashtag: #{hashtag}")
 
     try:
-        page.goto(profile_url, wait_until="domcontentloaded", timeout=60000)
+        page.goto(hashtag_url, wait_until="domcontentloaded", timeout=60000)
         page.wait_for_timeout(9000)
-
-        # chiude eventuali popup non critici
-        for text in ["Not Now", "Non ora", "Close", "Chiudi"]:
-            try:
-                page.get_by_text(text).click(timeout=1500)
-                page.wait_for_timeout(1000)
-            except Exception:
-                pass
 
         hrefs = page.eval_on_selector_all(
             "a[href]",
@@ -138,15 +136,16 @@ def collect_account_links(page, account):
                 if clean not in links:
                     links.append(clean)
 
-        return links[:MAX_LINKS_PER_ACCOUNT]
+        return links[:MAX_LINKS_PER_KEYWORD]
 
     except Exception as e:
-        print(f"Errore account @{account}: {e}")
+        print(f"Errore su keyword {keyword}: {e}")
         return []
 
 
-def extract_content_metadata(page, url, fallback_account):
+def extract_content_metadata(page, url):
     metadata = {
+        "account": "",
         "caption": "",
         "title": "",
         "likes": None,
@@ -188,10 +187,27 @@ def extract_content_metadata(page, url, fallback_account):
             text_content or ""
         ]))
 
+        account = ""
+
+        account_match = re.search(r"comments\s+-\s+([A-Za-z0-9._]+)\s+on", combined)
+        if account_match:
+            account = account_match.group(1)
+
+        if not account:
+            account_match = re.search(r"likes\s*,\s*[\d,.]+[KkMm]?\s+comments\s+-\s+([A-Za-z0-9._]+)", combined)
+            if account_match:
+                account = account_match.group(1)
+
+        if not account:
+            account_match = re.search(r"@\s*([A-Za-z0-9._]+)", combined)
+            if account_match:
+                account = account_match.group(1)
+
         likes, comments = extract_metrics(combined)
 
+        metadata["account"] = account
         metadata["caption"] = combined[:700]
-        metadata["title"] = clean_text(page_title or og_title or f"Instagram content by {fallback_account}")
+        metadata["title"] = clean_text(page_title or og_title or "Instagram content")
         metadata["likes"] = likes
         metadata["comments"] = comments
 
@@ -202,7 +218,7 @@ def extract_content_metadata(page, url, fallback_account):
         return metadata
 
 
-def make_item(account, url, metadata):
+def make_item(keyword, url, metadata):
     today = datetime.now().strftime("%Y-%m-%d")
     content_type = "reel" if "/reel/" in url else "post"
 
@@ -212,10 +228,10 @@ def make_item(account, url, metadata):
     return {
         "date_found": today,
         "platform": "Instagram",
-        "source_keyword": f"@{account}",
+        "source_keyword": keyword,
         "content_url": url,
-        "account": account,
-        "title": metadata.get("title", f"Instagram {content_type} by {account}"),
+        "account": metadata.get("account", ""),
+        "title": metadata.get("title", f"Instagram {content_type}: {keyword}"),
         "views": None,
         "likes": likes,
         "comments": comments,
@@ -233,7 +249,7 @@ def make_item(account, url, metadata):
 
 
 def main():
-    accounts = load_accounts()
+    keywords = load_keywords()
     findings = []
     seen_urls = set()
 
@@ -256,14 +272,14 @@ def main():
 
         instagram_login(page)
 
-        for account in accounts:
-            links = collect_account_links(page, account)
+        for keyword in keywords:
+            links = collect_instagram_links(page, keyword)
 
             for url in links:
                 if url not in seen_urls:
                     seen_urls.add(url)
-                    metadata = extract_content_metadata(page, url, account)
-                    findings.append(make_item(account, url, metadata))
+                    metadata = extract_content_metadata(page, url)
+                    findings.append(make_item(keyword, url, metadata))
 
         browser.close()
 
