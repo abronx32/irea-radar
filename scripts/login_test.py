@@ -42,20 +42,25 @@ with sync_playwright() as p:
     screenshot(page, "01-login-page.png")
 
     try:
-        print("Cerco campo username...")
-        page.locator("input[name='username']").wait_for(timeout=30000)
-        page.fill("input[name='username']", USERNAME)
+        print("Compilo username/password usando input index...")
 
-        print("Cerco campo password...")
-        page.locator("input[name='password']").wait_for(timeout=30000)
-        page.fill("input[name='password']", PASSWORD)
+        inputs = page.locator("input")
+        input_count = inputs.count()
+        print(f"Input trovati: {input_count}")
+
+        if input_count < 2:
+            screenshot(page, "98-no-inputs.png")
+            raise RuntimeError("Non trovo almeno 2 campi input nella pagina login.")
+
+        inputs.nth(0).fill(USERNAME)
+        inputs.nth(1).fill(PASSWORD)
 
         screenshot(page, "02-filled-form.png")
 
         print("Invio login...")
-        page.click("button[type='submit']")
-        page.wait_for_timeout(20000)
+        page.locator("button").filter(has_text="Log in").click(timeout=15000)
 
+        page.wait_for_timeout(25000)
         screenshot(page, "03-after-submit.png")
 
         current_url = page.url
